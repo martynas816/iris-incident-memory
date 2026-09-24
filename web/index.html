@@ -1,0 +1,305 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>IRIS Incident Memory</title>
+<style>
+:root {
+  --bg:#0b0d10;
+  --panel:#11151a;
+  --panel2:#151a20;
+  --line:#252c35;
+  --text:#f4f7fa;
+  --muted:#8d98a7;
+  --accent:#56d6b4;
+  --warn:#ffbd66;
+  --blue:#74a9ff;
+}
+* { box-sizing:border-box; }
+body {
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+button { font:inherit; }
+.shell { max-width:1500px; margin:auto; padding:28px; }
+header {
+  display:flex; justify-content:space-between; align-items:flex-start;
+  gap:24px; margin-bottom:24px;
+}
+.eyebrow {
+  color:var(--accent); font-size:12px; font-weight:800;
+  letter-spacing:.12em; text-transform:uppercase; margin-bottom:8px;
+}
+h1 { font-size:30px; margin:0 0 7px; letter-spacing:-.035em; }
+.subtitle { color:var(--muted); margin:0; max-width:720px; line-height:1.5; }
+.refresh {
+  border:1px solid var(--line); background:var(--panel);
+  color:var(--text); border-radius:9px; padding:9px 14px;
+  cursor:pointer;
+}
+.refresh:hover { background:var(--panel2); }
+.stats {
+  display:grid; grid-template-columns:repeat(3,1fr);
+  gap:12px; margin-bottom:16px;
+}
+.stat {
+  border:1px solid var(--line); background:var(--panel);
+  border-radius:12px; padding:14px 16px;
+}
+.stat span { display:block; color:var(--muted); font-size:12px; margin-bottom:5px; }
+.stat strong { font-size:20px; }
+.grid {
+  display:grid;
+  grid-template-columns:300px minmax(400px,1fr) 340px;
+  gap:16px;
+}
+.panel {
+  border:1px solid var(--line); background:var(--panel);
+  border-radius:14px; overflow:hidden;
+}
+.panel-head {
+  padding:14px 16px; border-bottom:1px solid var(--line);
+  font-size:13px; font-weight:700;
+}
+.incident-list { max-height:650px; overflow:auto; }
+.incident {
+  width:100%; text-align:left; border:0; border-bottom:1px solid var(--line);
+  background:transparent; color:inherit; padding:14px 15px; cursor:pointer;
+}
+.incident:hover { background:var(--panel2); }
+.incident.active { background:#16201e; }
+.row { display:flex; justify-content:space-between; gap:10px; align-items:center; }
+.name { font-size:13px; font-weight:700; margin-bottom:7px; }
+.meta { font-size:11px; color:var(--muted); }
+.badge {
+  display:inline-flex; align-items:center; border-radius:999px;
+  padding:3px 7px; font-size:10px; font-weight:800;
+  text-transform:uppercase; letter-spacing:.05em;
+}
+.warning { background:#3a2a12; color:var(--warn); }
+.change { background:#14273f; color:var(--blue); }
+.detail { padding:20px; }
+.detail h2 { margin:0 0 9px; font-size:23px; letter-spacing:-.025em; }
+.summary { color:#cbd3dc; line-height:1.55; margin-bottom:20px; }
+.section-title {
+  font-size:11px; color:var(--muted); text-transform:uppercase;
+  letter-spacing:.1em; font-weight:800; margin:22px 0 10px;
+}
+.evidence {
+  display:grid; grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:9px;
+}
+.evidence div {
+  background:var(--panel2); border:1px solid var(--line);
+  border-radius:9px; padding:10px 11px;
+}
+.evidence label {
+  display:block; color:var(--muted); font-size:10px;
+  text-transform:uppercase; letter-spacing:.06em; margin-bottom:5px;
+}
+.evidence span { font-size:12px; overflow-wrap:anywhere; }
+.raw {
+  background:#0d1014; border:1px solid var(--line);
+  border-radius:9px; padding:12px;
+  color:#bec7d2; font:11px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;
+  overflow:auto; white-space:pre-wrap;
+}
+.matches { padding:8px 12px 14px; }
+.match {
+  border-bottom:1px solid var(--line); padding:12px 4px;
+}
+.match:last-child { border-bottom:0; }
+.match-title { font-size:12px; font-weight:700; margin-bottom:7px; }
+.score-line { display:flex; align-items:center; gap:8px; }
+.score {
+  height:5px; background:#253039; border-radius:99px;
+  flex:1; overflow:hidden;
+}
+.score > div { height:100%; background:var(--accent); }
+.score-value { color:var(--accent); width:42px; text-align:right; font-size:11px; }
+.timeline-panel { margin-top:16px; }
+.timeline { padding:5px 16px 18px; }
+.event {
+  display:grid; grid-template-columns:150px 90px 1fr;
+  gap:15px; padding:11px 0; border-bottom:1px solid var(--line);
+  align-items:start;
+}
+.event:last-child { border-bottom:0; }
+.event time { color:var(--muted); font-size:11px; }
+.event-main strong { font-size:12px; }
+.event-main p { margin:4px 0 0; color:var(--muted); font-size:11px; line-height:1.4; }
+.empty { padding:20px; color:var(--muted); font-size:12px; }
+footer { color:#66717f; font-size:11px; margin-top:16px; }
+@media (max-width:1050px) {
+  .grid { grid-template-columns:280px 1fr; }
+  .similar-panel { grid-column:1/-1; }
+}
+@media (max-width:720px) {
+  .shell { padding:18px; }
+  header { flex-direction:column; }
+  .stats,.grid { grid-template-columns:1fr; }
+  .similar-panel { grid-column:auto; }
+  .event { grid-template-columns:1fr; gap:5px; }
+}
+</style>
+</head>
+<body>
+<div class="shell">
+  <header>
+    <div>
+      <div class="eyebrow">InterSystems IRIS · Incident Investigation</div>
+      <h1>IRIS Incident Memory</h1>
+      <p class="subtitle">
+        What broke, what changed around it, and have we seen something similar before?
+        Evidence is read from IRIS management data and similarity is ranked with native IRIS Vector Search.
+      </p>
+    </div>
+    <button class="refresh" onclick="load(currentId)">Refresh</button>
+  </header>
+
+  <div class="stats">
+    <div class="stat"><span>Detected incidents</span><strong id="incidentCount">—</strong></div>
+    <div class="stat"><span>Timeline events</span><strong id="timelineCount">—</strong></div>
+    <div class="stat"><span>Similarity engine</span><strong>HNSW</strong></div>
+  </div>
+
+  <main class="grid">
+    <section class="panel">
+      <div class="panel-head">Incidents</div>
+      <div class="incident-list" id="incidents"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">Investigation</div>
+      <div class="detail" id="detail"><div class="empty">Loading…</div></div>
+    </section>
+
+    <section class="panel similar-panel">
+      <div class="panel-head">Similar incident memory</div>
+      <div class="matches" id="matches"></div>
+    </section>
+  </main>
+
+  <section class="panel timeline-panel">
+    <div class="panel-head">Operational timeline</div>
+    <div class="timeline" id="timeline"></div>
+  </section>
+
+  <footer>
+    Evidence-first investigation · Embedded Python · InterSystems IRIS management data · IRIS Vector Search
+  </footer>
+</div>
+
+<script>
+let currentId = 0;
+
+function esc(v) {
+  return String(v ?? "").replace(/[&<>"']/g, c => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+  })[c]);
+}
+
+function pct(score) {
+  return Math.max(0, Math.min(100, Number(score || 0) * 100));
+}
+
+async function load(id = 0) {
+  currentId = Number(id || 0);
+
+  const url = currentId
+    ? `/incident-memory/api/overview/${currentId}`
+    : `/incident-memory/api/overview`;
+
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`API ${res.status}`);
+
+  const data = await res.json();
+
+  if (!currentId && data.selected_incident) {
+    currentId = data.selected_incident.id;
+  }
+
+  document.getElementById("incidentCount").textContent = data.incident_count;
+  document.getElementById("timelineCount").textContent = data.timeline.length;
+
+  document.getElementById("incidents").innerHTML = data.incidents.map(i => `
+    <button class="incident ${i.id === currentId ? "active" : ""}" onclick="load(${i.id})">
+      <div class="row">
+        <div class="name">${esc(i.evidence?.name || i.signature)}</div>
+        <span class="badge warning">${esc(i.severity)}</span>
+      </div>
+      <div class="meta">${esc(i.detected_at)} · ${esc(i.kind)}</div>
+    </button>
+  `).join("");
+
+  const s = data.selected_incident;
+  if (s) {
+    const e = s.evidence || {};
+    const c = e.system_context || {};
+
+    document.getElementById("detail").innerHTML = `
+      <div class="row">
+        <div>
+          <div class="eyebrow">Incident #${s.id}</div>
+          <h2>${esc(e.name || s.signature)}</h2>
+        </div>
+        <span class="badge warning">${esc(s.severity)}</span>
+      </div>
+
+      <div class="summary">${esc(s.summary)}</div>
+
+      <div class="section-title">Evidence</div>
+      <div class="evidence">
+        <div><label>Source</label><span>${esc(e.source)}</span></div>
+        <div><label>Namespace</label><span>${esc(e.namespace)}</span></div>
+        <div><label>IRIS task</label><span>${esc(e.execute_code)}</span></div>
+        <div><label>Detected</label><span>${esc(s.detected_at)}</span></div>
+        <div><label>Monitor state</label><span>${esc(c.monitor_state)}</span></div>
+        <div><label>Monitor alerts</label><span>${esc(c.monitor_alerts)}</span></div>
+      </div>
+
+      <div class="section-title">IRIS event</div>
+      <div class="raw">${esc(e.result)}</div>
+    `;
+  }
+
+  document.getElementById("matches").innerHTML =
+    data.similar_incidents.length
+      ? data.similar_incidents.map(m => `
+          <div class="match">
+            <div class="match-title">${esc(m.label)}</div>
+            <div class="score-line">
+              <div class="score"><div style="width:${pct(m.score)}%"></div></div>
+              <div class="score-value">${Number(m.score).toFixed(2)}</div>
+            </div>
+          </div>
+        `).join("")
+      : `<div class="empty">No historical matches yet.</div>`;
+
+  document.getElementById("timeline").innerHTML =
+    data.timeline.map(t => `
+      <div class="event">
+        <time>${esc(t.occurred_at)}</time>
+        <div>
+          <span class="badge ${t.event_type === "change" ? "change" : "warning"}">
+            ${esc(t.event_type)}
+          </span>
+        </div>
+        <div class="event-main">
+          <strong>${esc(t.title)}</strong>
+          <p>${esc(t.detail)}</p>
+        </div>
+      </div>
+    `).join("");
+}
+
+load().catch(err => {
+  document.getElementById("detail").innerHTML =
+    `<div class="empty">Failed to load portal: ${esc(err.message)}</div>`;
+});
+</script>
+</body>
+</html>
