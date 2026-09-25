@@ -7,19 +7,19 @@ ClassMethod Build() As %String [ Language = python ]
     import json
 
     try:
-        iris.sql.exec("DROP TABLE IncidentMemory.IncidentVector")
+        iris.sql.exec("""
+            CREATE TABLE IncidentMemory.IncidentVector (
+                IncidentId INTEGER NOT NULL,
+                SourceEventId INTEGER,
+                Label VARCHAR(300),
+                IncidentText VARCHAR(4000),
+                Embedding VECTOR(DOUBLE,128)
+            )
+        """)
     except Exception:
-        pass
-
-    iris.sql.exec("""
-        CREATE TABLE IncidentMemory.IncidentVector (
-            IncidentId INTEGER NOT NULL,
-            SourceEventId INTEGER,
-            Label VARCHAR(300),
-            IncidentText VARCHAR(4000),
-            Embedding VECTOR(DOUBLE,128)
-        )
-    """)
+        iris.sql.exec("""
+            DELETE FROM IncidentMemory.IncidentVector
+        """)
 
     rows = iris.sql.exec("""
         SELECT
@@ -76,13 +76,18 @@ ClassMethod Build() As %String [ Language = python ]
 
         indexed += 1
 
-    iris.sql.exec("""
-        CREATE INDEX IncidentVectorHNSW
-        ON TABLE IncidentMemory.IncidentVector (Embedding)
-        AS HNSW(Distance='Cosine')
-    """)
+    try:
+        iris.sql.exec("""
+            CREATE INDEX IncidentVectorHNSW
+            ON TABLE IncidentMemory.IncidentVector (Embedding)
+            AS HNSW(Distance='Cosine')
+        """)
+    except Exception:
+        pass
 
-    return json.dumps({"indexed": indexed}, indent=2)
+    return json.dumps({
+        "indexed": indexed
+    }, indent=2)
 }
 
 

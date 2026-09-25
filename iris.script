@@ -1,0 +1,54 @@
+; ------------------------------------------------------------
+; IRIS Incident Memory - runtime bootstrap
+; ------------------------------------------------------------
+
+ZN "USER"
+
+Write !,"=== Importing application classes ===",!
+Kill errors,imported
+Set sc=$SYSTEM.OBJ.ImportDir("/app/src","*.cls","ck",.errors,1,.imported)
+Write "IMPORT STATUS: ",sc,!
+If 'sc Do $SYSTEM.Status.DisplayError(sc)
+
+Write !,"=== Waiting for TASKMGR incident history ===",!
+Set ready=##class(IncidentMemory.StartupGate).WaitForExpiredTasks(90)
+Write "TASK HISTORY READY: ",ready,!
+
+Write !,"=== Ingesting IRIS management data ===",!
+Set result=##class(IncidentMemory.IncidentDetector).Ingest()
+Write result,!
+
+Write !,"=== Building native IRIS vector index ===",!
+Set result=##class(IncidentMemory.SimilarityIndex).Build()
+Write result,!
+
+ZN "%SYS"
+
+Write !,"=== Configuring application role ===",!
+Set exists=##class(Security.Roles).Exists("IncidentMemoryReader",.role,.sc)
+If 'exists Set sc=##class(Security.Roles).Create("IncidentMemoryReader","Read-only SQL access for IRIS Incident Memory","","")
+Write "ROLE STATUS: ",sc,!
+
+Write !,"=== Configuring web application ===",!
+Kill props
+Set props("AutheEnabled")=64
+Set props("DispatchClass")="IncidentMemory.REST"
+Set props("NameSpace")="USER"
+Set props("Enabled")=1
+Set props("MatchRoles")=":%DB_USER:IncidentMemoryReader"
+
+Set exists=##class(Security.Applications).Exists("/incident-memory",.app,.sc)
+If exists Set sc=##class(Security.Applications).Modify("/incident-memory",.props)
+If 'exists Set sc=##class(Security.Applications).Create("/incident-memory",.props)
+
+Write "WEB APP STATUS: ",sc,!
+
+ZN "USER"
+
+Write !,"=== Granting portal SQL access ===",!
+Set sc=$SYSTEM.SQL.Security.GrantPrivilege("Select","IncidentMemory.Incident,IncidentMemory.TimelineEvent,IncidentMemory.IncidentVector","Table","IncidentMemoryReader")
+Write "SQL GRANT STATUS: ",sc,!
+
+Write !,"=== Bootstrap complete ===",!
+
+Halt
