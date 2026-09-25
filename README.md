@@ -1,53 +1,268 @@
-﻿# IRIS Incident Memory
+# IRIS Incident Memory
 
-Incident investigation for InterSystems IRIS.
+**Incident investigation for InterSystems IRIS.**
 
-IRIS Incident Memory is a focused management portal that helps operators answer:
+IRIS Incident Memory is a focused management portal that helps an operator answer three questions quickly:
 
-**What just broke, what happened around it, and have we seen something similar before?**
+> **What broke, what changed around it, and have we seen something similar before?**
 
-## Goal
+Instead of presenting another broad administration dashboard, it builds an evidence-backed incident timeline from native IRIS management data and keeps a searchable memory of previous incidents.
 
-The application will correlate operational evidence from InterSystems IRIS, including:
+Built for the **2026 InterSystems Programming Contest: Build Your Own Management Portal**.
 
-- system and application logs
-- failed or abnormal scheduled tasks
-- process and system activity
-- CPU, memory and storage context
+## What it does
 
-Historical incidents will be normalized with Embedded Python and stored in InterSystems IRIS. IRIS Vector Search will be used to retrieve similar past incidents.
+IRIS Incident Memory:
 
-The interface is evidence-first: similarity results link back to the actual events that produced them rather than presenting an unsupported AI answer.
+- reads scheduled-task history from `%SYS_Task.History`
+- captures process context from `%SYS.ProcessQuery`
+- captures System Monitor state and alerts
+- separates operational anomalies from configuration/change events
+- persists normalized incidents and timeline events in IRIS
+- creates incident representations with Embedded Python
+- stores those representations in a native IRIS `VECTOR(DOUBLE,128)` column
+- creates an IRIS HNSW cosine index
+- retrieves the most similar historical incidents for the selected incident
+- exposes the result through an IRIS-hosted REST API and responsive web portal
 
-## Community Idea
+The interface is deliberately evidence-first. Similarity results remain tied to the IRIS events that produced them rather than being presented as unsupported conclusions.
 
-This project implements the InterSystems Community Opportunity:
+## Quick start
 
-**AI analysis of error logs**
+### Requirements
 
+- Docker Desktop or Docker Engine with Docker Compose
+- enough memory to run InterSystems IRIS Community Edition
+- x86-64 or another platform supported by the selected IRIS container
+
+Clone the repository:
+
+```bash
+git clone https://github.com/martynas816/iris-incident-memory.git
+cd iris-incident-memory
+```
+
+Start the application:
+
+```bash
+docker compose up --build
+```
+
+Then open:
+
+```text
+http://localhost:52773/incident-memory/
+```
+
+The first clean startup can take around a minute. The bootstrap waits for IRIS Task Manager history to become available before the initial incident scan.
+
+No manual class import, Management Portal configuration, SQL grant, or initialization command is required.
+
+Stop the application with:
+
+```bash
+docker compose down
+```
+
+## What happens on startup
+
+The container automatically:
+
+1. starts InterSystems IRIS
+2. imports and compiles the `IncidentMemory` classes
+3. waits for Task Manager history to become available
+4. ingests current IRIS management evidence
+5. persists incidents and timeline events
+6. builds the native IRIS vector similarity index
+7. creates the application role and least-privilege SQL grants
+8. configures the `/incident-memory` IRIS web application
+9. serves the portal and REST API
+
+A clean-container validation produced:
+
+```text
+IMPORT STATUS: 1
+TASK HISTORY READY: 1
+new_incidents: 7
+new_changes: 26
+indexed: 7
+ROLE STATUS: 1
+WEB APP STATUS: 1
+SQL GRANT STATUS: 1
+```
+
+The resulting API returned 7 incidents, 33 timeline events, 5 similarity matches, and the portal returned HTTP 200. Counts depend on the management history of the IRIS instance and are not hard-coded application data.
+
+## Architecture
+
+```text
+IRIS management data
+        |
+        +-- %SYS_Task.History
+        +-- %SYS.ProcessQuery
+        +-- System Monitor
+        |
+        v
+IncidentDetector
+        |
+        +--> Incident persistent objects
+        +--> TimelineEvent persistent objects
+        |
+        v
+Embedded Python TextVectorizer
+        |
+        v
+VECTOR(DOUBLE,128)
+        |
+        v
+IRIS HNSW index + VECTOR_COSINE
+        |
+        v
+SimilarityIndex
+        |
+        v
+REST API
+        |
+        v
+Incident investigation portal
+```
+
+## Incident classification
+
+Task Manager history contains more than failures. IRIS Incident Memory distinguishes:
+
+- successful task executions
+- task configuration/change records
+- expired scheduled tasks
+- other abnormal task results
+
+Only anomaly records become incidents. Configuration records remain timeline context.
+
+This avoids treating every non-empty Task Manager history field as an error.
+
+## Incident representation
+
+The contest build intentionally uses a lightweight deterministic representation rather than an external machine-learning service.
+
+`IncidentMemory.TextVectorizer` runs as Embedded Python and:
+
+- normalizes incident text
+- creates unigram and adjacent-bigram features
+- feature-hashes them into 128 dimensions
+- applies signed hashing
+- L2-normalizes the resulting vector
+
+The representation is persisted and searched with **native InterSystems IRIS Vector Search**.
+
+This means the application has no external model API, model download, or network dependency for similarity retrieval.
+
+## Native IRIS technologies used
+
+### Persistent data
+
+`IncidentMemory.Incident` stores detected incidents.
+
+`IncidentMemory.TimelineEvent` stores anomaly and change events used by the operational timeline.
+
+### Embedded Python
+
+Embedded Python is used for management-data processing, normalization, incident representation, and JSON/API assembly.
+
+### Vector Search
+
+Incident vectors are stored as:
+
+```sql
+VECTOR(DOUBLE,128)
+```
+
+The application creates an HNSW index using cosine distance and ranks similar incidents using `VECTOR_COSINE`.
+
+### IRIS REST application
+
+`IncidentMemory.REST` extends `%CSP.REST` and serves both the API and the web application.
+
+Main endpoints:
+
+```text
+GET /incident-memory/
+GET /incident-memory/health
+GET /incident-memory/api/overview
+GET /incident-memory/api/overview/:incidentId
+```
+
+## Project structure
+
+```text
+Dockerfile
+compose.yaml
+entrypoint.sh
+iris.script
+
+src/IncidentMemory/
+  API.cls
+  Incident.cls
+  IncidentDetector.cls
+  ManagementSnapshot.cls
+  REST.cls
+  SimilarityIndex.cls
+  StartupGate.cls
+  TextVectorizer.cls
+  TimelineEvent.cls
+
+web/
+  index.html
+```
+
+## Security model
+
+The contest container exposes the incident portal without a login for straightforward local evaluation.
+
+The web application receives only:
+
+- `%DB_USER`
+- the custom `IncidentMemoryReader` role
+
+`IncidentMemoryReader` is granted read access only to the application tables required by the portal.
+
+The supplied configuration is intended for a local contest/demo environment. Do not expose the unauthenticated development container directly to an untrusted network.
+
+## Reproducibility
+
+The application was validated from a completely fresh container using **InterSystems IRIS Community Edition 2026.1.0.234.1com**.
+
+The clean test required no interactive IRIS configuration after the container was started.
+
+`compose.yaml` restricts the container to 20 CPUs because of the IRIS Community Edition core limit.
+
+## Community Opportunity
+
+Related InterSystems Ideas Community Opportunity:
+
+**AI analysis of error logs**  
 https://ideas.intersystems.com/ideas/DPI-I-574
+
+IRIS Incident Memory applies that operational-investigation goal to IRIS management/task-history evidence by turning abnormal events into persistent, comparable incidents with historical retrieval.
+
+The current implementation does **not** send operational data to an external LLM. Its incident representation is generated locally with Embedded Python and searched natively inside IRIS.
+
+## Why this is different
+
+Many management portals answer:
+
+> What is the system doing right now?
+
+IRIS Incident Memory focuses on a different operational workflow:
+
+> Something went wrong. What evidence surrounds it, what changed nearby, and what previous incident looks most like this one?
+
+The aim is not to replace the full InterSystems Management Portal. It is to make one investigation workflow much faster and easier to reason about.
 
 ## Contest
 
-Built for the 2026 InterSystems Programming Contest:
+**InterSystems Programming Contest: Build Your Own Management Portal**
 
-**Build Your Own Management Portal**
-
-## Planned MVP
-
-1. Incident timeline combining relevant IRIS management signals.
-2. Error-signature normalization with Embedded Python.
-3. Historical incident persistence in IRIS.
-4. Similar-incident retrieval with IRIS Vector Search.
-5. Clear evidence showing why two incidents are considered related.
-6. Docker-based local deployment.
-7. IPM/ZPM package deployment.
-
-## Status
-
-Development in progress.
-
-Installation and demonstration instructions will be added before the contest submission is sent for approval.
+https://openexchange.intersystems.com/contest/48
 
 ## License
 
