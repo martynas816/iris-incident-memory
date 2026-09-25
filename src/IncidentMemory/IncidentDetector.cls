@@ -1,44 +1,61 @@
 Class IncidentMemory.IncidentDetector
 {
 
-ClassMethod Ingest() As %String [ Language = python ]
+ClassMethod Ingest(username As %String = "", password As %String = "") As %String [ Language = python ]
 {
+    import hashlib
     import iris
     import json
-    from datetime import datetime, timedelta
 
-    def event_time(log_date, log_time):
-        if not log_date:
-            return None
-        seconds = int(log_time or 0)
-        base = datetime.strptime(str(log_date), "%Y-%m-%d")
-        return (base + timedelta(seconds=seconds)).strftime("%Y-%m-%d %H:%M:%S")
+    def api(path):
+        raw = iris.cls("IncidentMemory.SysAdminClient").Get(
+            path,
+            username,
+            password
+        )
+        return json.loads(raw).get("result")
+
+    def stable_event_id(item):
+        identity = "|".join([
+            str(item.get("TaskId") or ""),
+            str(item.get("LogDatetime") or ""),
+            str(item.get("Name") or ""),
+            str(item.get("Result") or ""),
+            str(item.get("Routine") or ""),
+            str(item.get("Pid") or "")
+        ])
+
+        digest = hashlib.sha256(identity.encode("utf-8")).digest()
+
+        return int.from_bytes(digest[:8], "big") & 0x7FFFFFFFFFFFFFFF
+
+    process_rows = api("/process/?maxRows=100") or []
+
+    process_rows = sorted(
+        process_rows,
+        key=lambda x: int(x.get("CPUTime") or 0),
+        reverse=True
+    )[:5]
 
     processes = []
 
-    process_rows = iris.sql.exec("""
-        SELECT TOP 5
-            Pid,
-            NameSpace,
-            Routine,
-            State,
-            CPUTime
-        FROM %SYS.ProcessQuery
-        ORDER BY CPUTime DESC
-    """)
-
     for row in process_rows:
         processes.append({
-            "pid": int(row[0]),
-            "namespace": str(row[1] or ""),
-            "routine": str(row[2] or ""),
-            "state": str(row[3] or ""),
-            "cpu_time": int(row[4] or 0)
+            "pid": int(row.get("Pid") or 0),
+            "namespace": str(row.get("Nspace") or ""),
+            "routine": str(row.get("Routine") or ""),
+            "state": str(row.get("State") or ""),
+            "cpu_time": int(row.get("CPUTime") or 0)
         })
 
+    system_usage = api("/monitor/system-usage") or {}
+
     system_context = {
-        "monitor_state": int(iris.system.Monitor.State()),
-        "monitor_alerts": int(iris.system.Monitor.Alerts()),
+        "source": "InterSystems SysAdmin API",
+        "task_history_endpoint": "/api/admin/v1/task/history/",
+        "process_endpoint": "/api/admin/v1/process/",
+        "system_usage_endpoint": "/api/admin/v1/monitor/system-usage",
+        "system_usage": system_usage,
         "top_processes": processes
     }
 
@@ -48,40 +65,32 @@ ClassMethod Ingest() As %String [ Language = python ]
         "already_seen": 0
     }
 
-    task_rows = iris.sql.exec("""
-        SELECT TOP 100
-            ID,
-            Name,
-            NameSpace,
-            Error,
-            ExecuteCode,
-            DisplayErrorNumber,
-            Username,
-            DisplayLogDate,
-            LogTime,
-            DisplayStarted,
-            DisplayFinished
-        FROM %SYS_Task.History
-        ORDER BY ID DESC
-    """)
+    task_rows = api("/task/history/?maxRows=100") or []
 
-    for row in task_rows:
-        source_id = int(row[0])
-        name = str(row[1] or "")
-        namespace = str(row[2] or "")
-        result = str(row[3] or "")
-        execute_code = str(row[4] or "")
-        error_number = str(row[5] or "")
-        username = str(row[6] or "")
-        log_date = str(row[7] or "")
-        log_time = str(row[8] or "")
-        started = str(row[9] or "")
-        finished = str(row[10] or "")
+    for item in task_rows:
+        source_id = stable_event_id(item)
+
+        task_id = int(item.get("TaskId") or 0)
+        name = str(item.get("Name") or "")
+        namespace = str(item.get("Namespace") or "")
+        result = str(item.get("Result") or "")
+        routine = str(item.get("Routine") or "")
+        error_number = int(item.get("ErrNumber") or 0)
+        username_value = str(item.get("Username") or "")
+        started = str(item.get("LastStart") or "")
+        finished = str(item.get("Completed") or "")
+        occurred_at = str(
+            item.get("LogDatetime")
+            or item.get("Completed")
+            or item.get("LastStart")
+            or ""
+        )
 
         is_expired = result.startswith("Task Has Expired")
 
         is_change = (
-            execute_code == "TASKMGR"
+            username_value == "TASKMGR"
+            and not is_expired
             and (
                 result.startswith("Create ")
                 or name.startswith("TASKMGR ")
@@ -92,11 +101,11 @@ ClassMethod Ingest() As %String [ Language = python ]
             not is_expired
             and not is_change
             and (
-                bool(error_number)
+                error_number != 0
                 or (
                     result
                     and result != "Success"
-                    and execute_code != "TASKMGR"
+                    and username_value != "TASKMGR"
                 )
             )
         )
@@ -120,17 +129,17 @@ ClassMethod Ingest() As %String [ Language = python ]
             stats["already_seen"] += 1
             continue
 
-        occurred_at = event_time(log_date, log_time)
-
         evidence = {
-            "source": "%SYS_Task.History",
+            "source": "InterSystems SysAdmin API",
+            "endpoint": "/api/admin/v1/task/history/",
             "source_event_id": source_id,
+            "task_id": task_id,
             "name": name,
             "namespace": namespace,
             "result": result,
-            "execute_code": execute_code,
+            "execute_code": routine,
             "error_number": error_number,
-            "username": username,
+            "username": username_value,
             "started": started,
             "finished": finished,
             "system_context": system_context
@@ -160,11 +169,17 @@ ClassMethod Ingest() As %String [ Language = python ]
         if is_expired:
             kind = "task-expired"
             severity = "warning"
-            summary = "Scheduled task '" + name + "' missed its expected execution window."
+            summary = (
+                "Scheduled task '" + name +
+                "' missed its expected execution window."
+            )
         else:
             kind = "task-failure"
             severity = "error"
-            summary = "Scheduled task '" + name + "' reported: " + result
+            summary = (
+                "Scheduled task '" + name +
+                "' reported: " + result
+            )
 
         signature = kind + ":" + name.lower().replace(" ", "-")
 

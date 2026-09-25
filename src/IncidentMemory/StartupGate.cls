@@ -1,23 +1,31 @@
 Class IncidentMemory.StartupGate
 {
 
-ClassMethod WaitForExpiredTasks(timeoutSeconds As %Integer = 90) As %Integer [ Language = python ]
+ClassMethod WaitForExpiredTasks(timeoutSeconds As %Integer = 90, username As %String = "", password As %String = "") As %Integer [ Language = python ]
 {
     import iris
+    import json
     import time
 
     deadline = time.time() + int(timeoutSeconds)
 
     while time.time() < deadline:
-        rows = iris.sql.exec("""
-            SELECT TOP 1 ID
-            FROM %SYS_Task.History
-            WHERE Error LIKE 'Task Has Expired%'
-            ORDER BY ID DESC
-        """)
+        try:
+            raw = iris.cls("IncidentMemory.SysAdminClient").Get(
+                "/task/history/?maxRows=100",
+                username,
+                password
+            )
 
-        for row in rows:
-            return 1
+            rows = json.loads(raw).get("result", [])
+
+            for row in rows:
+                result = str(row.get("Result") or "")
+                if result.startswith("Task Has Expired"):
+                    return 1
+
+        except Exception:
+            pass
 
         time.sleep(2)
 

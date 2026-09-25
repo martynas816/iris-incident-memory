@@ -10,12 +10,40 @@ Set sc=$SYSTEM.OBJ.ImportDir("/app/src","*.cls","ck",.errors,1,.imported)
 Write "IMPORT STATUS: ",sc,!
 If 'sc Do $SYSTEM.Status.DisplayError(sc)
 
-Write !,"=== Waiting for TASKMGR incident history ===",!
-Set ready=##class(IncidentMemory.StartupGate).WaitForExpiredTasks(90)
+Set apiUser="IncidentMemoryAPI"
+Set apiPass="IncidentMemory-Local-Bootstrap-Only-2026!"
+
+ZN "%SYS"
+
+Write !,"=== Configuring temporary SysAdmin API account ===",!
+
+Set exists=##class(Security.Users).Exists(apiUser,.user,.sc)
+If exists Set sc=##class(Security.Users).Delete(apiUser)
+
+Kill props
+Set props("Roles")="%Operator"
+Set props("Password")=apiPass
+Set props("FullName")="IRIS Incident Memory bootstrap"
+Set props("NameSpace")="%SYS"
+Set props("Routine")=""
+Set props("ChangePassword")=0
+Set props("Enabled")=1
+Set props("Comment")="Temporary local account used during bootstrap for the InterSystems SysAdmin API"
+Set props("AccountNeverExpires")=1
+Set props("PasswordNeverExpires")=1
+
+Set sc=##class(Security.Users).Create(apiUser,.props)
+Write "SYSADMIN USER STATUS: ",sc,!
+If 'sc Do $SYSTEM.Status.DisplayError(sc)
+
+ZN "USER"
+
+Write !,"=== Waiting for SysAdmin API task history ===",!
+Set ready=##class(IncidentMemory.StartupGate).WaitForExpiredTasks(90,apiUser,apiPass)
 Write "TASK HISTORY READY: ",ready,!
 
-Write !,"=== Ingesting IRIS management data ===",!
-Set result=##class(IncidentMemory.IncidentDetector).Ingest()
+Write !,"=== Ingesting management data through SysAdmin API ===",!
+Set result=##class(IncidentMemory.IncidentDetector).Ingest(apiUser,apiPass)
 Write result,!
 
 Write !,"=== Building native IRIS vector index ===",!
@@ -23,6 +51,10 @@ Set result=##class(IncidentMemory.SimilarityIndex).Build()
 Write result,!
 
 ZN "%SYS"
+
+Write !,"=== Removing temporary SysAdmin API account ===",!
+Set sc=##class(Security.Users).Delete(apiUser)
+Write "SYSADMIN USER CLEANUP STATUS: ",sc,!
 
 Write !,"=== Configuring application role ===",!
 Set exists=##class(Security.Roles).Exists("IncidentMemoryReader",.role,.sc)

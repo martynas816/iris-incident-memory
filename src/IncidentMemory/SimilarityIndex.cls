@@ -10,7 +10,7 @@ ClassMethod Build() As %String [ Language = python ]
         iris.sql.exec("""
             CREATE TABLE IncidentMemory.IncidentVector (
                 IncidentId INTEGER NOT NULL,
-                SourceEventId INTEGER,
+                SourceEventId BIGINT,
                 Label VARCHAR(300),
                 IncidentText VARCHAR(4000),
                 Embedding VECTOR(DOUBLE,128)

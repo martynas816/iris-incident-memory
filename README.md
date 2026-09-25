@@ -16,9 +16,9 @@ Built for the **2026 InterSystems Programming Contest: Build Your Own Management
 
 IRIS Incident Memory:
 
-- reads scheduled-task history from `%SYS_Task.History`
-- captures process context from `%SYS.ProcessQuery`
-- captures System Monitor state and alerts
+- reads scheduled-task history through the InterSystems SysAdmin API (`GET /api/admin/v1/task/history/`)
+- captures process context through the SysAdmin API (`GET /api/admin/v1/process/`)
+- captures system-usage context through the SysAdmin API (`GET /api/admin/v1/monitor/system-usage`)
 - separates operational anomalies from configuration/change events
 - persists normalized incidents and timeline events in IRIS
 - creates incident representations with Embedded Python
@@ -73,7 +73,7 @@ The container automatically:
 1. starts InterSystems IRIS
 2. imports and compiles the `IncidentMemory` classes
 3. waits for Task Manager history to become available
-4. ingests current IRIS management evidence
+4. calls the native InterSystems SysAdmin API and ingests its management evidence
 5. persists incidents and timeline events
 6. builds the native IRIS vector similarity index
 7. creates the application role and least-privilege SQL grants
@@ -98,11 +98,14 @@ The resulting API returned 7 incidents, 33 timeline events, 5 similarity matches
 ## Architecture
 
 ```text
-IRIS management data
+InterSystems SysAdmin API
         |
-        +-- %SYS_Task.History
-        +-- %SYS.ProcessQuery
-        +-- System Monitor
+        +-- /api/admin/v1/task/history/
+        +-- /api/admin/v1/process/
+        +-- /api/admin/v1/monitor/system-usage
+        |
+        v
+SysAdminClient
         |
         v
 IncidentDetector
@@ -160,6 +163,21 @@ This means the application has no external model API, model download, or network
 
 ## Native IRIS technologies used
 
+### InterSystems SysAdmin API
+
+The incident-ingestion path is powered by the InterSystems SysAdmin API.
+
+On clean startup, the local contest container creates a temporary `%Operator` service account, uses HTTP Basic authentication to call the native IRIS SysAdmin endpoints, ingests the returned management evidence, and then removes that temporary account.
+
+The application uses:
+
+- `GET /api/admin/v1/task/history/`
+- `GET /api/admin/v1/process/`
+- `GET /api/admin/v1/monitor/system-usage`
+
+Task-history responses drive incident detection and timeline creation. Process and system-usage responses are stored as investigation context alongside each detected incident.
+
+The contest build was validated against InterSystems IRIS Community Edition 2026.1.0.234.1com, whose installed SysAdmin API reports API version 1.
 ### Persistent data
 
 `IncidentMemory.Incident` stores detected incidents.
@@ -205,6 +223,7 @@ src/IncidentMemory/
   API.cls
   Incident.cls
   IncidentDetector.cls
+  SysAdminClient.cls
   ManagementSnapshot.cls
   REST.cls
   SimilarityIndex.cls
