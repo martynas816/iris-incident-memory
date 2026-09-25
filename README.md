@@ -10,6 +10,8 @@ Instead of presenting another broad administration dashboard, it builds an evide
 
 Built for the **2026 InterSystems Programming Contest: Build Your Own Management Portal**.
 
+![IRIS Incident Memory portal](assets/portal.png)
+
 ## What it does
 
 IRIS Incident Memory:
