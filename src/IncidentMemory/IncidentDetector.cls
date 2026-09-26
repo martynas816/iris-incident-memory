@@ -29,7 +29,7 @@ ClassMethod Ingest(username As %String = "", password As %String = "") As %Strin
 
         return int.from_bytes(digest[:8], "big") & 0x7FFFFFFFFFFFFFFF
 
-    process_rows = api("/process/?maxRows=100") or []
+    process_rows = api("/processes?maxRows=100") or []
 
     process_rows = sorted(
         process_rows,
@@ -52,9 +52,9 @@ ClassMethod Ingest(username As %String = "", password As %String = "") As %Strin
 
     system_context = {
         "source": "InterSystems SysAdmin API",
-        "task_history_endpoint": "/api/admin/v1/task/history/",
-        "process_endpoint": "/api/admin/v1/process/",
-        "system_usage_endpoint": "/api/admin/v1/monitor/system-usage",
+        "task_history_endpoint": "/api/admin/v2/task/history",
+        "process_endpoint": "/api/admin/v2/processes",
+        "system_usage_endpoint": "/api/admin/v2/monitor/system-usage",
         "system_usage": system_usage,
         "top_processes": processes
     }
@@ -65,7 +65,7 @@ ClassMethod Ingest(username As %String = "", password As %String = "") As %Strin
         "already_seen": 0
     }
 
-    task_rows = api("/task/history/?maxRows=100") or []
+    task_rows = api("/task/history?maxRows=100") or []
 
     for item in task_rows:
         source_id = stable_event_id(item)
@@ -131,7 +131,7 @@ ClassMethod Ingest(username As %String = "", password As %String = "") As %Strin
 
         evidence = {
             "source": "InterSystems SysAdmin API",
-            "endpoint": "/api/admin/v1/task/history/",
+            "endpoint": "/api/admin/v2/task/history",
             "source_event_id": source_id,
             "task_id": task_id,
             "name": name,

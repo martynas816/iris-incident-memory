@@ -16,9 +16,9 @@ Built for the **2026 InterSystems Programming Contest: Build Your Own Management
 
 IRIS Incident Memory:
 
-- reads scheduled-task history through the InterSystems SysAdmin API (`GET /api/admin/v1/task/history/`)
-- captures process context through the SysAdmin API (`GET /api/admin/v1/process/`)
-- captures system-usage context through the SysAdmin API (`GET /api/admin/v1/monitor/system-usage`)
+- reads scheduled-task history through the InterSystems SysAdmin API (`GET /api/admin/v2/task/history`)
+- captures process context through the SysAdmin API (`GET /api/admin/v2/processes`)
+- captures system-usage context through the SysAdmin API (`GET /api/admin/v2/monitor/system-usage`)
 - separates operational anomalies from configuration/change events
 - persists normalized incidents and timeline events in IRIS
 - creates incident representations with Embedded Python
@@ -93,16 +93,16 @@ WEB APP STATUS: 1
 SQL GRANT STATUS: 1
 ```
 
-The resulting API returned 7 incidents, 33 timeline events, 5 similarity matches, and the portal returned HTTP 200. Counts depend on the management history of the IRIS instance and are not hard-coded application data.
+The resulting API returned 25 incidents and the portal returned HTTP 200. Counts depend on the management history available in the IRIS instance. Counts depend on the management history of the IRIS instance and are not hard-coded application data.
 
 ## Architecture
 
 ```text
 InterSystems SysAdmin API
         |
-        +-- /api/admin/v1/task/history/
-        +-- /api/admin/v1/process/
-        +-- /api/admin/v1/monitor/system-usage
+        +-- /api/admin/v2/task/history
+        +-- /api/admin/v2/processes
+        +-- /api/admin/v2/monitor/system-usage
         |
         v
 SysAdminClient
@@ -171,13 +171,13 @@ On clean startup, the local contest container creates a temporary `%Operator` se
 
 The application uses:
 
-- `GET /api/admin/v1/task/history/`
-- `GET /api/admin/v1/process/`
-- `GET /api/admin/v1/monitor/system-usage`
+- `GET /api/admin/v2/task/history`
+- `GET /api/admin/v2/processes`
+- `GET /api/admin/v2/monitor/system-usage`
 
 Task-history responses drive incident detection and timeline creation. Process and system-usage responses are stored as investigation context alongside each detected incident.
 
-The contest build was validated against InterSystems IRIS Community Edition 2026.1.0.234.1com, whose installed SysAdmin API reports API version 1.
+The contest build was validated against InterSystems IRIS Community Edition 2026.2 (Build 221U), whose installed SysAdmin API reports API version 2.
 ### Persistent data
 
 `IncidentMemory.Incident` stores detected incidents.
@@ -250,7 +250,7 @@ The supplied configuration is intended for a local contest/demo environment. Do 
 
 ## Reproducibility
 
-The application was validated from a completely fresh container using **InterSystems IRIS Community Edition 2026.1.0.234.1com**.
+The application was validated from a completely fresh container using **InterSystems IRIS Community Edition 2026.2 (Build 221U)**.
 
 The clean test required no interactive IRIS configuration after the container was started.
 

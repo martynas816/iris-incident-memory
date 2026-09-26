@@ -7,7 +7,7 @@ ClassMethod Get(path As %String, username As %String, password As %String) As %S
     import json
     import urllib.request
 
-    url = "http://127.0.0.1:52773/api/admin/v1" + str(path)
+    url = "http://127.0.0.1:52773/api/admin/v2" + str(path)
 
     token = base64.b64encode(
         (str(username) + ":" + str(password)).encode("utf-8")

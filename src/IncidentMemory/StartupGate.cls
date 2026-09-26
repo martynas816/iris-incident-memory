@@ -12,7 +12,7 @@ ClassMethod WaitForExpiredTasks(timeoutSeconds As %Integer = 90, username As %St
     while time.time() < deadline:
         try:
             raw = iris.cls("IncidentMemory.SysAdminClient").Get(
-                "/task/history/?maxRows=100",
+                "/task/history?maxRows=100",
                 username,
                 password
             )
